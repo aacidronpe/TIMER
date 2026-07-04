@@ -1,0 +1,46 @@
+{
+  "name": "TIMER",
+  "version": "1.0.0",
+  "description": "Timer + App usage tracker",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:portable": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "active-win": "^8.0.0",
+    "uiohook-napi": "^1.5.5"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.timer.app",
+    "productName": "TIMER",
+    "asar": true,
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "TIMER.exe"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "stats.html",
+      "package.json",
+      "icon.ico",
+      "node_modules/**"
+    ]
+  }
+}

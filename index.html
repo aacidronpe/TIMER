@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>TIMER</title>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { background: transparent; font-family: var(--font, 'Segoe UI'), sans-serif; -webkit-app-region: drag; -webkit-font-smoothing: antialiased; user-select: none; overflow: hidden; }
+    .widget { background: var(--bg, #1a1a1a); border-radius: 16px; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; position: relative; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; }
+    .top-left { display: flex; align-items: center; gap: 5px; -webkit-app-region: no-drag; }
+    .label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--accent, #888); opacity: 0.8; }
+    .circle-btn { width: 13px; height: 13px; border-radius: 50%; border: none; cursor: pointer; opacity: 0.75; transition: opacity 0.15s; -webkit-app-region: no-drag; flex-shrink: 0; }
+    .circle-btn:hover { opacity: 1; }
+    .btn-deadline-circle { background: var(--accent-pause, #aaa); }
+    .btn-deadline-circle.active { opacity: 1; box-shadow: 0 0 6px var(--accent-pause, #aaa); }
+    .btn-stats-circle { background: var(--accent, #888); }
+    .btn-top-circle { background: var(--accent2, #666); }
+    .btn-top-circle.active { opacity: 1; box-shadow: 0 0 6px var(--accent2, #666); }
+    .win-btns { display: flex; gap: 6px; -webkit-app-region: no-drag; }
+    .win-btn { width: 13px; height: 13px; border-radius: 50%; border: none; cursor: pointer; opacity: 0.75; transition: opacity 0.15s; }
+    .win-btn:hover { opacity: 1; }
+    .win-btn.settings { background: rgba(255,255,255,0.85); }
+    .win-btn.min { background: #f5a623; }
+    .win-btn.close { background: #e74c3c; }
+    .time-display { text-align: center; font-size: 42px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent, #888); letter-spacing: 2px; line-height: 1; cursor: default; padding: 4px 0; width: 100%; overflow: hidden; white-space: nowrap; display: flex; align-items: center; justify-content: center; }
+    .date-display { text-align: center; font-size: 11px; color: var(--text-muted, rgba(255,255,255,0.4)); letter-spacing: 1px; }
+    .btn-row { display: flex; gap: 8px; -webkit-app-region: no-drag; }
+    button.action { flex: 1; padding: 8px 0; border: none; border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: 1px; cursor: pointer; transition: all 0.15s; }
+    .btn-start { background: var(--accent, #888); color: #000; }
+    .btn-start:hover { filter: brightness(1.1); }
+    .btn-complete { background: var(--bg2, #2a2a2a); color: var(--text-muted, rgba(255,255,255,0.5)); border: 1px solid var(--border, rgba(255,255,255,0.08)); }
+    .btn-complete.active { background: var(--accent-complete, #666); color: #fff; border-color: transparent; }
+    .btn-reset { background: var(--bg2, #2a2a2a); color: var(--text-muted, rgba(255,255,255,0.5)); border: 1px solid var(--border, rgba(255,255,255,0.08)); }
+    .btn-reset:hover { filter: brightness(1.3); }
+    .divider { height: 1px; background: var(--border, rgba(255,255,255,0.08)); }
+
+
+    /* ── 커스텀 캘린더 팝업 ── */
+    .cal-overlay { display:none; position:absolute; inset:0; z-index:9998; background:rgba(0,0,0,0.35); border-radius:16px; }
+    .cal-overlay.open { display:flex; align-items:center; justify-content:center; }
+    .cal-popup { background:var(--bg,#1a1a1a); border:1px solid var(--border,rgba(255,255,255,0.12)); border-radius:14px; padding:16px; width:280px; box-shadow:0 8px 32px rgba(0,0,0,0.5); -webkit-app-region:no-drag; }
+    .cal-popup.open { display:block; }
+    .cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .cal-nav { background:none; border:none; color:var(--text,rgba(255,255,255,0.7)); font-size:13px; cursor:pointer; padding:2px 8px; border-radius:6px; transition:background 0.1s; -webkit-app-region:no-drag; }
+    .cal-nav:hover { background:var(--bg2,#2a2a2a); }
+    .cal-title { font-size:12px; font-weight:700; color:var(--text,rgba(255,255,255,0.85)); white-space:nowrap; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; margin-bottom:8px; }
+    .cal-dow { font-size:10px; font-weight:700; text-align:center; padding:3px 0; color:var(--text,rgba(255,255,255,0.7)); }
+    .cal-dow.sun { color:#e74c3c; } .cal-dow.sat { color:#5b9bd5; }
+    .cal-day { font-size:11px; text-align:center; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; cursor:pointer; color:var(--text,rgba(255,255,255,0.7)); transition:background 0.1s; -webkit-app-region:no-drag; margin:0 auto; }
+    .cal-day:hover:not(.empty) { background:var(--bg2,#2a2a2a); }
+    .cal-day.today { font-weight:700; color:var(--accent,#888); }
+    .cal-day.selected { background:var(--accent,#888)!important; color:#000!important; font-weight:700; }
+    .cal-day.other-month { opacity:0.3; }
+    .cal-day.sun-col { color:#e74c3c; } .cal-day.sat-col { color:#5b9bd5; }
+    .cal-day.selected.sun-col, .cal-day.selected.sat-col { color:#000!important; }
+    .cal-day.empty { cursor:default; }
+    .cal-time-row { display:flex; align-items:center; justify-content:center; gap:8px; padding-top:10px; border-top:1px solid var(--border,rgba(255,255,255,0.08)); margin-bottom:10px; }
+    .cal-time-label { font-size:11px; color:var(--text-muted,rgba(255,255,255,0.4)); }
+    .cal-time-select { background:var(--bg2,#2a2a2a); color:var(--text,rgba(255,255,255,0.85)); border:1px solid var(--border,rgba(255,255,255,0.08)); border-radius:6px; padding:4px 6px; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; -webkit-app-region:no-drag; }
+    .cal-time-select:focus { outline:none; border-color:var(--accent,#888); }
+    .cal-time-sep { font-size:18px; font-weight:700; color:var(--text-muted,rgba(255,255,255,0.3)); }
+    .cal-confirm { width:100%; padding:7px; background:var(--accent,#888); color:#000; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; transition:filter 0.15s; }
+    .cal-confirm:hover { filter:brightness(1.1); }
+    .dl-date-trigger { background:var(--bg2,#2a2a2a); color:var(--text,rgba(255,255,255,0.6)); border:1px solid var(--border,rgba(255,255,255,0.08)); border-radius:8px; padding:6px 8px; font-size:11px; font-family:inherit; cursor:pointer; flex-shrink:0; min-width:110px; text-align:left; transition:border-color 0.15s; }
+    .dl-date-trigger:hover { border-color:var(--accent,#888); }
+    .dl-date-trigger.has-date { color:var(--text,rgba(255,255,255,0.85)); }
+    .cal-wrapper { position:relative; flex-shrink:0; }
+
+    /* ── 설정 패널 ── */
+    .settings-panel { display: none; flex-direction: column; gap: 10px; padding-top: 6px; }
+    .settings-panel.open { display: flex; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-muted, rgba(255,255,255,0.5)); -webkit-app-region: no-drag; }
+    .setting-row select, .setting-row input[type=color], .setting-row input[type=text] { background: var(--bg2, #2a2a2a); color: var(--text, rgba(255,255,255,0.8)); border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 6px; padding: 3px 6px; font-size: 11px; cursor: pointer; }
+    .setting-row input[type=text] { width: 140px; cursor: text; }
+    input[type=color] { width: 40px; height: 24px; padding: 2px; cursor: pointer; }
+    input[type=range] { width: 100px; accent-color: var(--accent, #888); cursor: pointer; }
+    .range-row { display: flex; align-items: center; gap: 6px; }
+    .range-val { font-size: 10px; color: var(--text-muted, rgba(255,255,255,0.4)); width: 28px; text-align: right; }
+    .scale-btns { display: flex; gap: 4px; -webkit-app-region: no-drag; }
+    .scale-btn { padding: 3px 6px; font-size: 10px; background: var(--bg2, #2a2a2a); color: var(--text-muted, rgba(255,255,255,0.5)); border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 5px; cursor: pointer; transition: all 0.15s; }
+    .scale-btn:hover { color: var(--text, rgba(255,255,255,0.85)); }
+    .scale-btn.active { background: var(--accent, #888); color: #000; border-color: transparent; }
+
+    /* ── 데드라인 패널 ── */
+    .deadline-panel { display: none; flex-direction: column; gap: 8px; -webkit-app-region: no-drag; }
+    .deadline-panel.open { display: flex; }
+    .deadline-list { display: flex; flex-direction: column; gap: 6px; }
+    .deadline-item { background: var(--bg2, #2a2a2a); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+    .deadline-item.dl-dragging { opacity: 0.4; }
+    .deadline-item.dl-drag-over { outline: 2px solid var(--accent, #888); }
+    .dl-item-top { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+    .dl-collapse-btn { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.5)); cursor: pointer; padding: 0; flex-shrink: 0; transition: color 0.15s; display: flex; align-items: center; }
+    .dl-collapse-btn:hover { color: var(--text, rgba(255,255,255,0.85)); }
+    .dl-collapse-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .dl-item-name { font-size: 12px; font-weight: 600; color: var(--text, rgba(255,255,255,0.85)); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dl-item-remaining { font-size: 12px; font-weight: 700; color: var(--accent, #888); cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: opacity 0.15s; }
+    .dl-item-remaining:hover { opacity: 0.75; }
+    .dl-item-remaining.urgent { color: #e74c3c; }
+    .dl-item-remaining.soon { color: #f39c12; }
+    .dl-item-remaining.done-all { color: var(--text-muted, rgba(255,255,255,0.4)); }
+    .dl-del-btn { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.3)); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; transition: color 0.15s; flex-shrink: 0; }
+    .dl-del-btn:hover { color: #e74c3c; }
+    .todo-body { overflow: hidden; }
+    .todo-body.collapsed { display: none; }
+    .todo-list { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+    .todo-item { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+    .todo-check { width: 13px; height: 13px; border-radius: 3px; border: 1.5px solid var(--border, rgba(255,255,255,0.2)); background: transparent; cursor: pointer; flex-shrink: 0; transition: all 0.15s; appearance: none; }
+    .todo-check:checked { background: var(--accent, #888); border-color: var(--accent, #888); }
+    .todo-text { font-size: 11px; color: var(--text-muted, rgba(255,255,255,0.6)); flex: 1; }
+    .todo-text.done { text-decoration: line-through; opacity: 0.5; }
+    .todo-deadline-badge { font-size: 10px; color: var(--text-muted, rgba(255,255,255,0.35)); flex-shrink: 0; margin-left: 4px; }
+    .todo-del { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.2)); cursor: pointer; font-size: 11px; padding: 0; transition: color 0.15s; flex-shrink: 0; }
+    .todo-del:hover { color: #e74c3c; }
+    .todo-add-row { display: flex; gap: 4px; margin-top: 4px; align-items: center; }
+    .todo-add-input { flex: 1; background: transparent; color: var(--text, rgba(255,255,255,0.85)); border: none; border-bottom: 1px solid var(--border, rgba(255,255,255,0.1)); padding: 3px 4px; font-size: 11px; font-family: inherit; min-width: 0; }
+    .todo-add-input:focus { outline: none; border-bottom-color: var(--accent, #888); }
+    .todo-days-input { width: 28px; background: transparent; color: var(--text-muted, rgba(255,255,255,0.5)); border: none; border-bottom: 1px solid var(--border, rgba(255,255,255,0.1)); padding: 3px 2px; font-size: 11px; font-family: inherit; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+    .todo-days-input::-webkit-outer-spin-button, .todo-days-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .todo-days-input:focus { outline: none; border-bottom-color: var(--accent, #888); }
+    .todo-days-label { font-size: 10px; color: var(--text-muted, rgba(255,255,255,0.3)); }
+    .todo-add-btn { background: none; border: none; color: var(--accent, #888); font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1; flex-shrink: 0; }
+
+    /* 데드라인 추가 행 */
+    .dl-add-row { display: flex; gap: 6px; align-items: center; }
+    .dl-add-name { flex: 1; background: var(--bg2, #2a2a2a); color: var(--text, rgba(255,255,255,0.85)); border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 8px; padding: 6px 8px; font-size: 11px; font-family: inherit; min-width: 0; }
+    .dl-add-name:focus { outline: none; border-color: var(--accent, #888); }
+    .dl-add-date { background: var(--bg2, #2a2a2a); color: var(--text, rgba(255,255,255,0.6)); border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 8px; padding: 6px 6px; font-size: 10px; font-family: inherit; cursor: pointer; flex-shrink: 0; width: 148px; }
+    .dl-add-date:focus { outline: none; border-color: var(--accent, #888); }
+    .dl-add-date::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+    .dl-add-confirm { background: var(--accent, #888); color: #000; border: none; border-radius: 8px; width: 26px; height: 26px; font-size: 15px; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: filter 0.15s; display: flex; align-items: center; justify-content: center; }
+    .dl-add-confirm:hover { filter: brightness(1.1); }
+
+    /* ── 우클릭 메뉴 ── */
+    .ctx-menu { display: none; position: fixed; background: var(--bg, #1a1a1a); border: 1px solid var(--border, rgba(255,255,255,0.12)); border-radius: 10px; padding: 6px; z-index: 9999; min-width: 160px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); -webkit-app-region: no-drag; }
+    .ctx-menu.open { display: block; }
+    .ctx-item { padding: 7px 12px; font-size: 12px; color: var(--text, rgba(255,255,255,0.85)); border-radius: 6px; cursor: pointer; transition: background 0.1s; }
+    .ctx-item:hover { background: var(--bg2, #2a2a2a); }
+    .ctx-sep { height: 1px; background: var(--border, rgba(255,255,255,0.08)); margin: 4px 0; }
+    .ctx-item.danger { color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <div class="ctx-menu" id="ctxMenu">
+    <div class="ctx-item" onclick="ctxStats()">통계 보기</div>
+    <div class="ctx-item" id="ctxAlwaysOnTop" onclick="ctxToggleTop()">항상 위에 표시</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="ctxClear()">데이터 초기화</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="window.api.closeWindow()">종료</div>
+  </div>
+
+  <div class="widget" id="widget">
+    <div class="top-row">
+      <div class="top-left">
+        <span class="label">TIMER</span>
+        <button class="circle-btn btn-deadline-circle" id="btnDeadline" onclick="toggleDeadlinePanel()" title="데드라인"></button>
+        <button class="circle-btn btn-stats-circle" id="btnStatsCircle" onclick="window.api.toggleStats()" title="통계"></button>
+        <button class="circle-btn btn-top-circle" id="btnTopCircle" onclick="toggleAlwaysOnTop()" title="항상 위에 표시"></button>
+      </div>
+      <div class="win-btns">
+        <button class="win-btn settings" id="btnSettings" onclick="toggleSettings()" title="설정"></button>
+        <button class="win-btn min" onclick="window.api.minimizeWindow()"></button>
+        <button class="win-btn close" onclick="window.api.closeWindow()"></button>
+      </div>
+    </div>
+
+    <!-- 설정 패널: 타이머 아래, 데드라인 위 -->
+    <div class="time-display" id="timeDisplay">00:00:00</div>
+    <div class="date-display" id="dateDisplay"></div>
+
+    <div class="btn-row">
+      <button class="action btn-start" id="btnStart" onclick="toggleTimer()">START</button>
+      <button class="action btn-complete" id="btnComplete" onclick="completeTimer()">COMPLETE</button>
+      <button class="action btn-reset" onclick="clearData()">RESET</button>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+      <div class="divider"></div>
+      <div class="setting-row"><span>테마</span><select id="selTheme" onchange="applySettings()"><option value="dark">다크</option><option value="light">라이트</option></select></div>
+      <div class="setting-row"><span>강조색</span><input type="color" id="colorPicker" value="#888888" oninput="applySettings()" /></div>
+      <div class="setting-row"><span>폰트</span><select id="selFont" onchange="onFontSelect()"><option value="'Segoe UI', sans-serif">Segoe UI</option><option value="'Malgun Gothic', sans-serif">맑은 고딕</option><option value="'Consolas', monospace">Consolas</option><option value="'Arial', sans-serif">Arial</option><option value="'Georgia', serif">Georgia</option><option value="custom">사용자 지정...</option></select></div>
+      <div class="setting-row" id="customFontRow" style="display:none"><span>폰트명</span><input type="text" id="customFont" placeholder="예: Galmuri11" onchange="applySettings()" /></div>
+      <div class="setting-row"><span>폰트 크기</span><div class="range-row"><input type="range" id="fontSize" min="24" max="72" value="42" oninput="onFontSize(this.value)" /><span class="range-val" id="fontSizeVal">42px</span></div></div>
+      <div class="setting-row"><span>창 크기</span><div class="scale-btns"><button class="scale-btn active" onclick="onScale(1.0,this)">100%</button><button class="scale-btn" onclick="onScale(1.25,this)">125%</button><button class="scale-btn" onclick="onScale(1.5,this)">150%</button><button class="scale-btn" onclick="onScale(1.75,this)">175%</button><button class="scale-btn" onclick="onScale(2.0,this)">200%</button></div></div>
+    </div>
+
+    <!-- 데드라인 패널 -->
+    <div class="deadline-panel" id="deadlinePanel">
+      <div class="divider"></div>
+      <div class="dl-add-row">
+        <input class="dl-add-name" id="dlAddName" placeholder="날짜 선택하지 않을시 디데이 기능 X" onkeydown="if(event.key==='Enter') addDeadlineInline()" />
+        <div class="cal-wrapper" id="calWrapper">
+          <button class="dl-date-trigger" id="dlDateTrigger" onclick="toggleCal()">날짜 선택</button>
+        </div>
+        <button class="dl-add-confirm" onclick="addDeadlineInline()">+</button>
+      </div>
+      <div class="deadline-list" id="deadlineList" style="display:none"></div>
+    </div>
+    <!-- 캘린더 오버레이: widget 기준 중앙 -->
+    <div class="cal-overlay" id="calOverlay">
+      <div class="cal-popup" id="calPopup">
+        <div class="cal-header">
+          <button class="cal-nav" onclick="calPrevMonth()">◀</button>
+          <span class="cal-title" id="calTitle"></span>
+          <button class="cal-nav" onclick="calNextMonth()">▶</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-time-row">
+          <span class="cal-time-label">시간</span>
+          <select class="cal-time-select" id="calHourSel" onchange="calH=parseInt(this.value)"></select>
+          <span class="cal-time-sep">:</span>
+          <select class="cal-time-select" id="calMinSel" onchange="calM=parseInt(this.value)"></select>
+        </div>
+        <button class="cal-confirm" onclick="calConfirm()">✓ 설정</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let running=false, currentSeconds=0, alwaysOnTop=false;
+    let deadlines=[];
+    let dlTickInterval=null;
+    let dlDragSrc=null, dlDragOver=null;
+
+    function loadDeadlines(){ try{ deadlines=JSON.parse(localStorage.getItem("deadlines")||"[]"); }catch(e){ deadlines=[]; } }
+    function saveDeadlines(){ localStorage.setItem("deadlines",JSON.stringify(deadlines)); }
+
+    // ── 캘린더 ───────────────────────────────
+    let calYear=0,calMonth=0,calDay=0,calH=12,calM=0,calSelected=false;
+
+    function toggleCal(){
+      const overlay=document.getElementById("calOverlay");
+      if(!overlay.classList.contains("open")){
+        const now=new Date();
+        if(!calSelected){ calYear=now.getFullYear();calMonth=now.getMonth();calDay=now.getDate();calH=now.getHours();calM=now.getMinutes(); }
+        renderCal();
+        overlay.classList.add("open");
+      } else {
+        overlay.classList.remove("open");
+      }
+    }
+    function closeCal(){
+      document.getElementById("calOverlay").classList.remove("open");
+    }
+    function renderCal(){
+      const months=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+      document.getElementById("calTitle").textContent=`${calYear}년 ${months[calMonth]}`;
+
+      // 시간 select 초기화 (처음 한 번만)
+      const hourSel=document.getElementById("calHourSel");
+      const minSel=document.getElementById("calMinSel");
+      if(hourSel.options.length===0){
+        for(let i=0;i<24;i++) hourSel.add(new Option(String(i).padStart(2,"0"),i));
+      }
+      if(minSel.options.length===0){
+        for(let i=0;i<60;i+=5) minSel.add(new Option(String(i).padStart(2,"0"),i));
+      }
+      hourSel.value=calH;
+      minSel.value=Math.round(calM/10)*10 < 60 ? Math.round(calM/10)*10 : 50;
+
+      const grid=document.getElementById("calGrid");
+      const dows=["일","월","화","수","목","금","토"];
+      let html=dows.map((d,i)=>`<div class="cal-dow ${i===0?"sun":i===6?"sat":""}">${d}</div>`).join("");
+      const first=new Date(calYear,calMonth,1).getDay();
+      const lastDay=new Date(calYear,calMonth+1,0).getDate();
+      const today=new Date();
+      for(let i=0;i<first;i++) html+=`<div class="cal-day empty"></div>`;
+      for(let d=1;d<=lastDay;d++){
+        const col=(first+d-1)%7;
+        const colCls=col===0?"sun-col":col===6?"sat-col":"";
+        const isToday=d===today.getDate()&&calMonth===today.getMonth()&&calYear===today.getFullYear();
+        const isSel=calSelected&&d===calDay;
+        html+=`<div class="cal-day ${colCls}${isToday?" today":""}${isSel?" selected":""}" onclick="calSelectDay(${d})">${d}</div>`;
+      }
+      grid.innerHTML=html;
+    }
+    function calSelectDay(d){ calDay=d; calSelected=true; renderCal(); updateTriggerLabel(); }
+    function calPrevMonth(){ calMonth--;if(calMonth<0){calMonth=11;calYear--;}renderCal(); }
+    function calNextMonth(){ calMonth++;if(calMonth>11){calMonth=0;calYear++;}renderCal(); }
+    function calChangeHour(d){ calH=Math.max(0,Math.min(23,calH+d));renderCal();updateTriggerLabel(); }
+    function calChangeMin(d){ calM=Math.max(0,Math.min(59,calM+d));renderCal();updateTriggerLabel(); }
+    function updateTriggerLabel(){
+      const btn=document.getElementById("dlDateTrigger");
+      if(calSelected){
+        btn.textContent=`${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(calDay).padStart(2,"0")} ${String(calH).padStart(2,"0")}:${String(calM).padStart(2,"0")}`;
+        btn.classList.add("has-date");
+      }
+    }
+    function calConfirm(){ if(!calSelected) return; updateTriggerLabel(); closeCal(); }
+    function getCalTarget(){
+      if(!calSelected) return null;
+      return new Date(calYear,calMonth,calDay,calH,calM,0).getTime();
+    }
+
+    // 캘린더 오버레이 외부 클릭 닫기
+    document.getElementById("calOverlay").addEventListener("click",(e)=>{
+      if(e.target===document.getElementById("calOverlay")) closeCal();
+    });
+
+    // 기존 캘린더 외부 클릭 닫기 제거 (오버레이로 대체)
+    function addDeadlineInline(){
+      const name=document.getElementById("dlAddName").value.trim();
+      if(!name) return;
+      const target=getCalTarget(); // null이면 날짜 없음
+deadlines.push({
+  id: Date.now(),
+  createdAt: Date.now(),
+  name,
+  target: target || null,
+  displayMode: "dday",
+  todos: [],
+  collapsed: false
+});
+      saveDeadlines();
+      document.getElementById("dlAddName").value="";
+      document.getElementById("dlDateTrigger").textContent="날짜 선택";
+      document.getElementById("dlDateTrigger").classList.remove("has-date");
+      calSelected=false;
+      renderDeadlines(); resizeToContent();
+    }
+
+    // ── 표기 포맷 ─────────────────────────────
+    function formatDisplay(d,ms){
+      if(d.target===null) return "";
+      if(ms<=0) return "만료됨";
+      const totalSec=Math.floor(ms/1000);
+      const days=Math.floor(totalSec/86400);
+      const h=Math.floor((totalSec%86400)/3600);
+      const m=Math.floor((totalSec%3600)/60);
+      switch(d.displayMode){
+        case "dday": return ms < 86400000 ? "D-DAY" : `D-${Math.ceil(ms/86400000)}`;
+        case "full":
+          if(days>0) return `${days}일 ${h}시간 ${m}분`;
+          return `${h}시간 ${m}분`;
+        case "hm": {
+          const totalH=days*24+h;
+          return `${totalH}시간 ${m}분`;
+        }
+        default: return `D-${Math.ceil(ms/86400000)}`;
+      }
+    }
+
+    function nextDisplayMode(cur){
+      const modes=["dday","full","hm"];
+      return modes[(modes.indexOf(cur)+1)%modes.length];
+    }
+
+    // ── 할일 D-day ────
+    function getTodoBadge(deadlineObj, accDays){
+      if(!accDays) return "";
+      const createdAt = deadlineObj.createdAt || deadlineObj.id;
+      // 목표 시각 = 생성 시각 + accDays일
+      const targetMs = createdAt + accDays * 86400000;
+      const diffMs = targetMs - Date.now();
+      if(diffMs < 0) return "만료됨";
+      if(diffMs < 86400000) return "D-DAY"; // 24시간 미만
+      return `D-${Math.ceil(diffMs / 86400000)}`;
+    }
+
+    // ── 데드라인 조작 ─────────────────────────
+    function deleteDeadline(id){ deadlines=deadlines.filter(d=>d.id!==id); saveDeadlines(); renderDeadlines(); resizeToContent(); }
+    function toggleDisplayMode(id){
+      const d=deadlines.find(d=>d.id===id); if(!d) return;
+      d.displayMode=nextDisplayMode(d.displayMode); saveDeadlines(); renderDeadlines();
+    }
+    function toggleCollapse(id){
+      const d=deadlines.find(d=>d.id===id); if(!d) return;
+      d.collapsed=!d.collapsed; saveDeadlines(); renderDeadlines(); resizeToContent();
+    }
+
+    // ── 할일 조작 ─────────────────────────────
+    function addTodo(dlId){
+      const input=document.getElementById("todo-input-"+dlId);
+      const daysInput=document.getElementById("todo-days-"+dlId);
+      if(!input) return;
+      const text=input.value.trim(); if(!text) return;
+      const d=deadlines.find(d=>d.id===dlId); if(!d) return;
+      const days=parseInt(daysInput?.value)||0;
+      const acc=d.todos.reduce((s,t)=>s+(t.days||0),0);
+      d.todos.push({id:Date.now(),text,done:false,days,accDays:acc+days});
+      saveDeadlines();
+      input.value=""; if(daysInput) daysInput.value="";
+      renderDeadlines(); resizeToContent();
+    }
+    function toggleTodo(dlId,todoId){
+      const d=deadlines.find(d=>d.id===dlId); if(!d) return;
+      const t=d.todos.find(t=>t.id===todoId); if(!t) return;
+      t.done=!t.done;
+      if(d.todos.length>0&&d.todos.every(t=>t.done)) d.collapsed=true;
+      else d.collapsed=false;
+      saveDeadlines(); renderDeadlines(); resizeToContent();
+    }
+    function deleteTodo(dlId,todoId){
+      const d=deadlines.find(d=>d.id===dlId); if(!d) return;
+      d.todos=d.todos.filter(t=>t.id!==todoId);
+      let acc=0; d.todos.forEach(t=>{ acc+=(t.days||0); t.accDays=acc; });
+      saveDeadlines(); renderDeadlines(); resizeToContent();
+    }
+
+    // ── 데드라인 드래그 정렬 ──────────────────
+    function onDlDragStart(e, id){
+      dlDragSrc=id; dlDragOver=null;
+      e.dataTransfer.effectAllowed="move";
+      e.stopPropagation();
+      setTimeout(()=>{ const el=document.getElementById("dl-item-"+id); if(el) el.classList.add("dl-dragging"); },0);
+    }
+    function onDlDragOver(e, id){
+      e.preventDefault(); e.stopPropagation();
+      if(dlDragSrc===null||dlDragSrc===id) return;
+      const srcEl=document.getElementById("dl-item-"+dlDragSrc);
+      const tgtEl=document.getElementById("dl-item-"+id);
+      if(!srcEl||!tgtEl) return;
+      // 마우스가 타겟의 위쪽 절반이면 앞에, 아래쪽 절반이면 뒤에 삽입
+      const rect=tgtEl.getBoundingClientRect();
+      const mid=rect.top+rect.height/2;
+      if(e.clientY<mid) tgtEl.before(srcEl);
+      else tgtEl.after(srcEl);
+    }
+    function onDlDragEnd(){
+      if(dlDragSrc!==null){ const el=document.getElementById("dl-item-"+dlDragSrc); if(el) el.classList.remove("dl-dragging"); }
+      // DOM 순서 기준으로 deadlines 배열 재정렬
+      if(dlDragSrc!==null){
+        const list=document.getElementById("deadlineList");
+        const items=Array.from(list.querySelectorAll(".deadline-item"));
+        const newOrder=items.map(el=>parseInt(el.id.replace("dl-item-",""))).filter(id=>!isNaN(id));
+        deadlines.sort((a,b)=>newOrder.indexOf(a.id)-newOrder.indexOf(b.id));
+        saveDeadlines();
+      }
+      dlDragSrc=null; dlDragOver=null;
+    }
+    // ── 렌더링 ────────────────────────────────
+    function renderDeadlines(){
+      const list=document.getElementById("deadlineList"); if(!list) return;
+      const now=Date.now();
+      if(deadlines.length===0){ list.style.display="none"; list.innerHTML=""; return; }
+      list.style.display="flex"; list.style.flexDirection="column"; list.style.gap="6px";
+
+      deadlines.forEach((d,di)=>{
+        const ms=d.target-now;
+        // 할일 전부 완료 시 "완료" 표기
+        const allDone = d.todos.length > 0 && d.todos.every(t=>t.done);
+        const displayText = allDone ? "완료" : formatDisplay(d,ms);
+        const cls = allDone ? "done-all" : (ms<3600000?"urgent":ms<86400000?"soon":"");
+
+        let item=document.getElementById("dl-item-"+d.id);
+        if(!item){
+          item=document.createElement("div");
+          item.className="deadline-item";
+          item.id="dl-item-"+d.id;
+          item.setAttribute("draggable","true");
+          item.addEventListener("dragstart",(e)=>onDlDragStart(e,d.id));
+          item.addEventListener("dragover",(e)=>onDlDragOver(e,d.id));
+          item.addEventListener("dragend",onDlDragEnd);
+          list.appendChild(item);
+        }
+
+        // 상단 행
+        let top=item.querySelector(".dl-item-top");
+        if(!top){ top=document.createElement("div"); top.className="dl-item-top"; item.prepend(top); }
+        const collapseIcon=d.collapsed
+          ?`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 -960 960 960\" fill=\"currentColor\"><path d=\"M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z\"/></svg>`
+          :`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 -960 960 960\" fill=\"currentColor\"><path d=\"M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z\"/></svg>`;
+        top.innerHTML=`
+          <button class="dl-collapse-btn" onclick="toggleCollapse(${d.id})">${collapseIcon}</button>
+          <span class="dl-item-name" title="${d.name}" onclick="toggleCollapse(${d.id})" style="cursor:pointer">${d.name}</span>
+          <span class="dl-item-remaining ${cls}" onclick="toggleDisplayMode(${d.id})">${displayText}</span>
+          <button class="dl-del-btn" onclick="deleteDeadline(${d.id})">×</button>`;
+
+        // 할일 영역
+        let body=item.querySelector(".todo-body");
+        if(!body){ body=document.createElement("div"); body.className="todo-body"; item.appendChild(body); }
+        body.classList.toggle("collapsed",!!d.collapsed);
+
+        // 할일 목록
+        let todoList=body.querySelector(".todo-list");
+        if(!todoList){ todoList=document.createElement("div"); todoList.className="todo-list"; body.appendChild(todoList); }
+        todoList.innerHTML=d.todos.map(t=>{
+const badge =
+  t.days > 0
+    ? `<span class="todo-deadline-badge">${getTodoBadge(d,t.accDays)}</span>`
+    : "";
+          return `<div class="todo-item">
+            <input type="checkbox" class="todo-check" ${t.done?"checked":""} onchange="toggleTodo(${d.id},${t.id})" />
+            <span class="todo-text ${t.done?"done":""}">${t.text}</span>
+            ${badge}
+            <button class="todo-del" onclick="deleteTodo(${d.id},${t.id})">×</button>
+          </div>`;
+        }).join("");
+
+        // 추가 행 (포커스 유지)
+        let addRow=body.querySelector(".todo-add-row");
+        if(!addRow){
+          addRow=document.createElement("div");
+          addRow.className="todo-add-row";
+          addRow.innerHTML=`
+            <input class="todo-add-input" id="todo-input-${d.id}" placeholder="할일 추가..." />
+            <input class="todo-days-input" id="todo-days-${d.id}" type="number" min="0" placeholder="0" />
+            <span class="todo-days-label">일</span>
+            <button class="todo-add-btn" onclick="addTodo(${d.id})">+</button>`;
+          addRow.querySelector(".todo-add-input").addEventListener("keydown",(e)=>{ if(e.key==="Enter") addTodo(d.id); });
+          body.appendChild(addRow);
+        }
+      });
+
+      // 삭제된 아이템 제거
+      list.querySelectorAll(".deadline-item").forEach(el=>{
+        const id=parseInt(el.id.replace("dl-item-",""));
+        if(!deadlines.find(d=>d.id===id)) el.remove();
+      });
+
+      // 순서 정렬
+      deadlines.forEach((d,i)=>{
+        const el=document.getElementById("dl-item-"+d.id);
+        if(el&&list.children[i]!==el) list.appendChild(el);
+      });
+    }
+
+    // 타이머 텍스트만 갱신 (포커스 방해 없이)
+    function renderDeadlinesTimerOnly(){
+      const now=Date.now();
+      deadlines.forEach(d=>{
+        const ms=d.target-now;
+        const allDone=d.todos.length>0&&d.todos.every(t=>t.done);
+        const el=document.querySelector(`#dl-item-${d.id} .dl-item-remaining`);
+        if(el){
+          el.textContent=allDone?"완료":formatDisplay(d,ms);
+          el.className="dl-item-remaining"+(allDone?" done-all":ms<3600000?" urgent":ms<86400000?" soon":"");
+        }
+      });
+    }
+
+    function toggleDeadlinePanel(){
+      const panel=document.getElementById("deadlinePanel");
+      const open=panel.classList.toggle("open");
+      document.getElementById("btnDeadline").classList.toggle("active",open);
+      resizeToContent();
+      if(open){ renderDeadlines(); if(!dlTickInterval) dlTickInterval=setInterval(renderDeadlinesTimerOnly,1000); }
+      else{ if(dlTickInterval){clearInterval(dlTickInterval);dlTickInterval=null;} }
+    }
+
+    // ── 타이머 ───────────────────────────────
+    function pad(n){return String(n).padStart(2,"0");}
+    function formatSeconds(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return`${pad(h)}:${pad(m)}:${pad(sec)}`;}
+    function updateDate(){const now=new Date();const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];document.getElementById("dateDisplay").textContent=`${now.getFullYear()}. ${now.getMonth()+1}. ${now.getDate()}. ${days[now.getDay()]}`;}
+    setInterval(updateDate,1000); updateDate();
+    window.api.onTimerTick((sec)=>{currentSeconds=sec;document.getElementById("timeDisplay").textContent=formatSeconds(sec);});
+
+    // 마우스 자동 추적 (START 버튼 시 자동 ON)
+    window.api.onAutoStart(async () => {
+      if(!running){
+        running=true;
+        const btn=document.getElementById("btnStart");
+        const complete=document.getElementById("btnComplete");
+        btn.textContent="PAUSE";
+        btn.style.background="var(--accent-pause)";
+        complete.classList.add("active");
+        await window.api.timerStart();
+      }
+    });
+
+    window.api.onAutoPause(async () => {
+      if(running){
+        running=false;
+        document.getElementById("btnStart").textContent="START";
+        document.getElementById("btnStart").style.background="";
+        await window.api.timerStop();
+      }
+    });
+
+    async function toggleTimer(){
+      const btn=document.getElementById("btnStart"),complete=document.getElementById("btnComplete");
+      if(!running){
+        running=true;btn.textContent="PAUSE";btn.style.background="var(--accent-pause)";complete.classList.add("active");
+        await window.api.timerStart();
+        window.api.setAutoTrack(true); // START 시 마우스 추적 ON
+      } else {
+        running=false;btn.textContent="START";btn.style.background="";
+        await window.api.timerStop();
+        window.api.setAutoTrack(false); // PAUSE 시 마우스 추적 OFF
+      }
+    }
+    async function completeTimer(){
+      if(!running&&currentSeconds===0)return;
+      running=false;document.getElementById("btnStart").textContent="START";document.getElementById("btnStart").style.background="";
+      document.getElementById("btnComplete").classList.remove("active");await window.api.timerComplete();
+      window.api.setAutoTrack(false); // COMPLETE 시 마우스 추적 OFF
+      currentSeconds=0;document.getElementById("timeDisplay").textContent="00:00:00";
+    }
+    async function clearData(){
+      await window.api.clearData();running=false;
+      document.getElementById("btnStart").textContent="START";document.getElementById("btnStart").style.background="";
+      document.getElementById("btnComplete").classList.remove("active");await window.api.timerReset();
+      window.api.setAutoTrack(false); // RESET 시 마우스 추적 OFF
+      currentSeconds=0;document.getElementById("timeDisplay").textContent="00:00:00";
+    }
+
+    function toggleAlwaysOnTop(){
+      alwaysOnTop=!alwaysOnTop;window.api.setAlwaysOnTop(alwaysOnTop);
+      document.getElementById("btnTopCircle").classList.toggle("active",alwaysOnTop);
+      document.getElementById("ctxAlwaysOnTop").textContent=alwaysOnTop?"✓ 항상 위에 표시":"항상 위에 표시";
+    }
+
+    const ctxMenu=document.getElementById("ctxMenu");
+    function showCtxMenu(x,y){ctxMenu.classList.add("open");ctxMenu.style.left="0";ctxMenu.style.top="0";const w=ctxMenu.offsetWidth,h=ctxMenu.offsetHeight;ctxMenu.style.left=Math.min(x,window.innerWidth-w-4)+"px";ctxMenu.style.top=Math.min(y,window.innerHeight-h-4)+"px";}
+    function hideCtxMenu(){ctxMenu.classList.remove("open");}
+    function ctxStats(){hideCtxMenu();window.api.toggleStats();}
+    function ctxToggleTop(){hideCtxMenu();toggleAlwaysOnTop();}
+    function ctxClear(){hideCtxMenu();clearData();}
+    document.getElementById("widget").addEventListener("contextmenu",(e)=>{e.preventDefault();showCtxMenu(e.clientX,e.clientY);});
+    document.addEventListener("click",(e)=>{if(!ctxMenu.contains(e.target))hideCtxMenu();});
+
+    // ── 테마 ─────────────────────────────────
+    const themes={
+      dark:{"--bg":"#1a1a1a","--bg2":"#2a2a2a","--border":"rgba(255,255,255,0.08)","--text":"rgba(255,255,255,0.85)","--text-muted":"rgba(255,255,255,0.4)"},
+      light:{"--bg":"#f0f0f0","--bg2":"#e0e0e0","--border":"rgba(0,0,0,0.1)","--text":"rgba(0,0,0,0.85)","--text-muted":"rgba(0,0,0,0.4)"},
+    };
+    function hexToHsl(hex){let r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;const max=Math.max(r,g,b),min=Math.min(r,g,b);let h,s,l=(max+min)/2;if(max===min){h=s=0;}else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=((g-b)/d+(g<b?6:0))/6;break;case g:h=((b-r)/d+2)/6;break;case b:h=((r-g)/d+4)/6;break;}}return[Math.round(h*360),Math.round(s*100),Math.round(l*100)];}
+    function hslToHex(h,s,l){s/=100;l/=100;const a=s*Math.min(l,1-l);const f=n=>{const k=(n+h/30)%12;const c=l-a*Math.max(Math.min(k-3,9-k,1),-1);return Math.round(255*c).toString(16).padStart(2,'0');};return`#${f(0)}${f(8)}${f(4)}`;}
+    function deriveColors(hex){const[h,s,l]=hexToHsl(hex);return{pauseColor:hslToHex(h,Math.max(0,s-10),Math.min(100,l+10)),completeColor:hslToHex(h,Math.max(0,s-10),l),accent2:hslToHex(h,s,Math.max(0,l-10))};}
+    function applyTheme(settings){
+      const root=document.documentElement;
+      const t=themes[settings.theme]||themes.dark;
+      for(const[k,v]of Object.entries(t))root.style.setProperty(k,v);
+      const accent=settings.accentColor||"#888888";
+      root.style.setProperty("--accent",accent);
+      root.style.setProperty("--font",settings.font||"'Segoe UI', sans-serif");
+      document.body.style.fontFamily=settings.font||"'Segoe UI', sans-serif";
+      const{pauseColor,completeColor,accent2}=deriveColors(accent);
+      root.style.setProperty("--accent-pause",pauseColor);
+      root.style.setProperty("--accent-complete",completeColor);
+      root.style.setProperty("--accent2",accent2);
+      const btnS=document.getElementById("btnSettings");
+      if(btnS)btnS.style.background=settings.theme==="light"?"rgba(0,0,0,0.6)":"rgba(255,255,255,0.85)";
+    }
+
+    function getBaseHeight(){const fontSize=parseInt(document.getElementById("fontSize").value)||42;return Math.round(110+fontSize*1.6);}
+    let currentScale = 1.0;
+
+    function resizeToContent(){
+      requestAnimationFrame(()=>{
+        const widget=document.getElementById("widget");
+        if(!widget) return;
+        window.api.resizeWindow(widget.scrollHeight);
+      });
+    }
+
+    function toggleSettings(){document.getElementById("settingsPanel").classList.toggle("open");resizeToContent();}
+function onFontSelect(){
+  document.getElementById("customFontRow").style.display =
+    document.getElementById("selFont").value==="custom"
+      ? "flex"
+      : "none";
+
+  resizeToContent();
+
+  applySettings();
+}    function fitText(){const el=document.getElementById("timeDisplay");const maxW=el.parentElement.offsetWidth-28;let size=parseInt(document.getElementById("fontSize")?.value)||42;el.style.fontSize=size+"px";while(el.scrollWidth>maxW&&size>12){size--;el.style.fontSize=size+"px";}}
+    function onFontSize(val){document.getElementById("fontSizeVal").textContent=val+"px";document.getElementById("timeDisplay").style.fontSize=val+"px";fitText();resizeToContent();applySettings();}
+    function onScale(val,btn){
+      document.querySelectorAll(".scale-btn").forEach(b=>b.classList.remove("active"));
+      if(btn) btn.classList.add("active");
+      currentScale=parseFloat(val);
+      // transform 제거
+      document.body.style.transform="";
+      document.body.style.width="";
+      window.api.scaleWindow(currentScale);
+      applySettings();
+    }
+    async function applySettings(){
+      const selFont=document.getElementById("selFont").value;
+      const customFont=document.getElementById("customFont").value;
+      const font=selFont==="custom"&&customFont?`'${customFont}', sans-serif`:selFont;
+      const settings={theme:document.getElementById("selTheme").value,accentColor:document.getElementById("colorPicker").value,font,fontSize:document.getElementById("fontSize").value,scale:document.querySelector(".scale-btn.active")?.textContent||"100%"};
+      applyTheme(settings); await window.api.saveSettings(settings);
+    }
+    window.api.onSettingsUpdate((s)=>applyTheme(s));
+
+    (async()=>{
+      loadDeadlines();
+      const s=await window.api.getSettings();
+      document.getElementById("selTheme").value=s.theme||"dark";
+      document.getElementById("colorPicker").value=s.accentColor||"#888888";
+      const builtinFonts=["'Segoe UI', sans-serif","'Malgun Gothic', sans-serif","'Consolas', monospace","'Arial', sans-serif","'Georgia', serif"];
+      if(s.font&&!builtinFonts.includes(s.font)){document.getElementById("selFont").value="custom";document.getElementById("customFontRow").style.display="flex";document.getElementById("customFont").value=s.font.replace(/^'|',.*$/g,"");}
+      else document.getElementById("selFont").value=s.font||"'Segoe UI', sans-serif";
+      if(s.fontSize){document.getElementById("fontSize").value=s.fontSize;document.getElementById("fontSizeVal").textContent=s.fontSize+"px";document.getElementById("timeDisplay").style.fontSize=s.fontSize+"px";}
+      if(s.scale){
+        document.querySelectorAll(".scale-btn").forEach(b=>b.classList.toggle("active",b.textContent===s.scale));
+        const scaleMap={"100%":1.0,"125%":1.25,"150%":1.5,"175%":1.75,"200%":2.0};
+        currentScale=scaleMap[s.scale]||1.0;
+        document.body.style.transform="";
+        document.body.style.width="";
+        window.api.scaleWindow(currentScale);
+      }
+      applyTheme(s);
+      resizeToContent();
+      setTimeout(fitText,100);
+    })();
+  </script>
+</body>
+</html>

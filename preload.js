@@ -1,0 +1,26 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("api", {
+  getSettings: () => ipcRenderer.invoke("get-settings"),
+  saveSettings: (s) => ipcRenderer.invoke("save-settings", s),
+  timerStart: () => ipcRenderer.invoke("timer-start"),
+  timerStop: () => ipcRenderer.invoke("timer-stop"),
+  timerComplete: () => ipcRenderer.invoke("timer-complete"),
+  timerReset: () => ipcRenderer.invoke("timer-reset"),
+  getStats: () => ipcRenderer.invoke("get-stats"),
+  clearData: () => ipcRenderer.invoke("clear-data"),
+  setAlwaysOnTop: (v) => ipcRenderer.invoke("set-always-on-top", v),
+  setAutoTrack: (v) => ipcRenderer.invoke("set-auto-track", v),
+  closeWindow: () => ipcRenderer.invoke("close-window"),
+  minimizeWindow: () => ipcRenderer.invoke("minimize-window"),
+  showStats: () => ipcRenderer.invoke("show-stats"),
+  toggleStats: () => ipcRenderer.invoke("toggle-stats"),
+  resizeWindow: (h) => ipcRenderer.invoke("resize-window", h),
+  scaleWindow: (s) => ipcRenderer.invoke("scale-window", s),
+  getIcon: (path) => ipcRenderer.invoke("get-icon", path),
+  onTimerTick: (cb) => ipcRenderer.on("timer-tick", (_, sec) => cb(sec)),
+  onStatsUpdate: (cb) => ipcRenderer.on("stats-update", (_, data) => cb(data)),
+  onSettingsUpdate: (cb) => ipcRenderer.on("settings-update", (_, s) => cb(s)),
+  onAutoStart: (cb) => ipcRenderer.on("auto-start", () => cb()),
+  onAutoPause: (cb) => ipcRenderer.on("auto-pause", () => cb()),
+});
