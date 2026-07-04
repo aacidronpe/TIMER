@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:portable": "electron-builder --win portable"
+    "build:win": "electron-builder --win portable",
+    "build:mac": "electron-builder --mac dmg"
   },
   "dependencies": {
     "active-win": "^8.0.0",
@@ -24,14 +25,21 @@
       "target": [
         {
           "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ]
     },
     "portable": {
       "artifactName": "TIMER.exe"
+    },
+    "mac": {
+      "icon": "icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ]
     },
     "files": [
       "main.js",
@@ -40,6 +48,7 @@
       "stats.html",
       "package.json",
       "icon.ico",
+      "icon.icns",
       "node_modules/**"
     ]
   }
