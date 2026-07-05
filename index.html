@@ -90,8 +90,28 @@
     .deadline-panel.open { display: flex; }
     .deadline-list { display: flex; flex-direction: column; gap: 6px; }
     .deadline-item { background: var(--bg2, #2a2a2a); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
-    .deadline-item.dl-dragging { opacity: 0.4; }
+    .deadline-item { position: relative; }
+    .deadline-item:focus { outline: none; }
+    .deadline-item.dl-dragging { outline: 1px dashed var(--border, rgba(255,255,255,0.3)); }
     .deadline-item.dl-drag-over { outline: 2px solid var(--accent, #888); }
+    .deadline-item.dl-drop-before::before,
+    .deadline-item.dl-drop-after::after {
+      content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--accent, #888);
+    }
+    .deadline-item.dl-drop-before::before { top: -4px; }
+    .deadline-item.dl-drop-after::after { bottom: -4px; }
+    .deadline-item.dl-drop-nest { outline: 2px dashed var(--accent, #888); outline-offset: 2px; }
+    .dl-children { display: flex; flex-direction: column; gap: 0; margin-top: 4px; padding-left: 14px; border-left: 2px solid var(--border, rgba(255,255,255,0.08)); }
+    .dl-children.collapsed { display: none; }
+    /* 서브메뉴 항목: 카드 배경/라운드/패딩 없이 얇은 구분선으로만 구분 (들여쓰기는 dl-children의 세로선이 담당) */
+    .deadline-item.dl-item-sub {
+      background: none; border-radius: 0; padding: 6px 0;
+      border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+    }
+    .dl-children > .deadline-item.dl-item-sub:first-child { border-top: none; }
+    .dl-promote-btn { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.4)); cursor: pointer; padding: 0 2px; flex-shrink: 0; transition: color 0.15s; display: flex; align-items: center; }
+    .dl-promote-btn svg { width: 16px; height: 16px; }
+    .dl-promote-btn:hover { color: var(--accent, #888); }
     .dl-item-top { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
     .dl-collapse-btn { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.5)); cursor: pointer; padding: 0; flex-shrink: 0; transition: color 0.15s; display: flex; align-items: center; }
     .dl-collapse-btn:hover { color: var(--text, rgba(255,255,255,0.85)); }
@@ -102,7 +122,8 @@
     .dl-item-remaining.urgent { color: #e74c3c; }
     .dl-item-remaining.soon { color: #f39c12; }
     .dl-item-remaining.done-all { color: var(--text-muted, rgba(255,255,255,0.4)); }
-    .dl-del-btn { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.3)); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; transition: color 0.15s; flex-shrink: 0; }
+    .dl-del-btn { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.3)); cursor: pointer; line-height: 1; padding: 0; transition: color 0.15s; flex-shrink: 0; display: flex; align-items: center; }
+    .dl-del-btn svg { width: 14px; height: 14px; }
     .dl-del-btn:hover { color: #e74c3c; }
     .todo-body { overflow: hidden; }
     .todo-body.collapsed { display: none; }
@@ -113,7 +134,8 @@
     .todo-text { font-size: 11px; color: var(--text-muted, rgba(255,255,255,0.6)); flex: 1; }
     .todo-text.done { text-decoration: line-through; opacity: 0.5; }
     .todo-deadline-badge { font-size: 10px; color: var(--text-muted, rgba(255,255,255,0.35)); flex-shrink: 0; margin-left: 4px; }
-    .todo-del { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.2)); cursor: pointer; font-size: 11px; padding: 0; transition: color 0.15s; flex-shrink: 0; }
+    .todo-del { background: none; border: none; color: var(--text-muted, rgba(255,255,255,0.2)); cursor: pointer; padding: 0; transition: color 0.15s; flex-shrink: 0; display: flex; align-items: center; }
+    .todo-del svg { width: 14px; height: 14px; }
     .todo-del:hover { color: #e74c3c; }
     .todo-add-row { display: flex; gap: 4px; margin-top: 4px; align-items: center; }
     .todo-add-input { flex: 1; background: transparent; color: var(--text, rgba(255,255,255,0.85)); border: none; border-bottom: 1px solid var(--border, rgba(255,255,255,0.1)); padding: 3px 4px; font-size: 11px; font-family: inherit; min-width: 0; }
@@ -313,7 +335,8 @@ deadlines.push({
   target: target || null,
   displayMode: "dday",
   todos: [],
-  collapsed: false
+  collapsed: false,
+  parentId: null
 });
       saveDeadlines();
       document.getElementById("dlAddName").value="";
@@ -361,8 +384,41 @@ deadlines.push({
       return `D-${Math.ceil(diffMs / 86400000)}`;
     }
 
+    // ── 서브 데드라인(트리) 유틸 ────────────────
+    function getChildren(parentId){
+      return deadlines.filter(d => (d.parentId||null) === (parentId||null));
+    }
+    function isDescendant(ancestorId, nodeId){
+      if(nodeId===ancestorId) return true;
+      const node=deadlines.find(x=>x.id===nodeId);
+      if(!node || !node.parentId) return false;
+      return isDescendant(ancestorId, node.parentId);
+    }
+    function promoteDeadline(id){
+      const idx=deadlines.findIndex(x=>x.id===id); if(idx===-1) return;
+      const d=deadlines[idx];
+      const parent=deadlines.find(x=>x.id===d.parentId);
+      deadlines.splice(idx,1);
+      d.parentId = parent ? (parent.parentId||null) : null;
+      if(parent){
+        const parentIdx=deadlines.findIndex(x=>x.id===parent.id);
+        deadlines.splice(parentIdx+1,0,d);
+      } else {
+        deadlines.push(d);
+      }
+      saveDeadlines(); renderDeadlines(); resizeToContent();
+    }
+
     // ── 데드라인 조작 ─────────────────────────
-    function deleteDeadline(id){ deadlines=deadlines.filter(d=>d.id!==id); saveDeadlines(); renderDeadlines(); resizeToContent(); }
+    function deleteDeadline(id){
+      const d=deadlines.find(x=>x.id===id);
+      if(d){
+        // 하위 항목은 삭제된 항목의 상위로 승격 (데이터 유실 방지)
+        deadlines.forEach(c=>{ if(c.parentId===id) c.parentId=(d.parentId||null); });
+      }
+      deadlines=deadlines.filter(x=>x.id!==id);
+      saveDeadlines(); renderDeadlines(); resizeToContent();
+    }
     function toggleDisplayMode(id){
       const d=deadlines.find(d=>d.id===id); if(!d) return;
       d.displayMode=nextDisplayMode(d.displayMode); saveDeadlines(); renderDeadlines();
@@ -401,119 +457,168 @@ deadlines.push({
       saveDeadlines(); renderDeadlines(); resizeToContent();
     }
 
-    // ── 데드라인 드래그 정렬 ──────────────────
+    // ── 데드라인 드래그 정렬 + 서브메뉴화 ──────
+    // 아이템의 위쪽 25% = 앞에 놓기, 아래쪽 25% = 뒤에 놓기, 가운데 50% = 하위(서브메뉴)로 넣기
     function onDlDragStart(e, id){
-      dlDragSrc=id; dlDragOver=null;
+      dlDragSrc=id;
       e.dataTransfer.effectAllowed="move";
       e.stopPropagation();
-      setTimeout(()=>{ const el=document.getElementById("dl-item-"+id); if(el) el.classList.add("dl-dragging"); },0);
+      const item=document.getElementById("dl-item-"+id);
+      const header=item ? item.querySelector(".dl-item-top") : null;
+      if(header && e.dataTransfer.setDragImage){
+        e.dataTransfer.setDragImage(header, 20, header.offsetHeight/2);
+      }
+      setTimeout(()=>{ if(item) item.classList.add("dl-dragging"); },0);
+    }
+    function clearDlDropHighlight(){
+      document.querySelectorAll(".deadline-item").forEach(el=>el.classList.remove("dl-drop-before","dl-drop-after","dl-drop-nest"));
     }
     function onDlDragOver(e, id){
       e.preventDefault(); e.stopPropagation();
       if(dlDragSrc===null||dlDragSrc===id) return;
+      if(isDescendant(dlDragSrc,id)) return; // 자기 자신/자신의 하위로는 드롭 불가
+      const el=document.getElementById("dl-item-"+id);
+      if(!el) return;
+      const rect=el.getBoundingClientRect();
+      const ratio=(e.clientY-rect.top)/rect.height;
+      clearDlDropHighlight();
+      if(ratio<0.25) el.classList.add("dl-drop-before");
+      else if(ratio>0.75) el.classList.add("dl-drop-after");
+      else el.classList.add("dl-drop-nest");
+    }
+    function onDlDragLeave(e){ e.stopPropagation(); }
+    function onDlDrop(e, id){
+      e.preventDefault(); e.stopPropagation();
+      if(dlDragSrc===null||dlDragSrc===id||isDescendant(dlDragSrc,id)){ clearDlDropHighlight(); return; }
       const srcEl=document.getElementById("dl-item-"+dlDragSrc);
-      const tgtEl=document.getElementById("dl-item-"+id);
-      if(!srcEl||!tgtEl) return;
-      // 마우스가 타겟의 위쪽 절반이면 앞에, 아래쪽 절반이면 뒤에 삽입
-      const rect=tgtEl.getBoundingClientRect();
-      const mid=rect.top+rect.height/2;
-      if(e.clientY<mid) tgtEl.before(srcEl);
-      else tgtEl.after(srcEl);
+      if(srcEl){ srcEl.classList.remove("dl-dragging"); srcEl.blur(); }
+      const el=document.getElementById("dl-item-"+id);
+      const mode = el && el.classList.contains("dl-drop-before") ? "before"
+                 : el && el.classList.contains("dl-drop-after") ? "after" : "nest";
+      clearDlDropHighlight();
+      const srcIdx=deadlines.findIndex(x=>x.id===dlDragSrc);
+      if(srcIdx===-1) return;
+      const [srcObj]=deadlines.splice(srcIdx,1);
+      if(mode==="nest"){
+        srcObj.parentId=id;
+        let insertAt=deadlines.length;
+        for(let i=deadlines.length-1;i>=0;i--){ if(deadlines[i].parentId===id){ insertAt=i+1; break; } }
+        deadlines.splice(insertAt,0,srcObj);
+      } else {
+        const tgt=deadlines.find(x=>x.id===id);
+        srcObj.parentId = tgt ? (tgt.parentId||null) : null;
+        const tgtIdx=deadlines.findIndex(x=>x.id===id);
+        deadlines.splice(mode==="before"?tgtIdx:tgtIdx+1,0,srcObj);
+      }
+      saveDeadlines();
+      dlDragSrc=null;
+      renderDeadlines(); resizeToContent();
     }
     function onDlDragEnd(){
-      if(dlDragSrc!==null){ const el=document.getElementById("dl-item-"+dlDragSrc); if(el) el.classList.remove("dl-dragging"); }
-      // DOM 순서 기준으로 deadlines 배열 재정렬
-      if(dlDragSrc!==null){
-        const list=document.getElementById("deadlineList");
-        const items=Array.from(list.querySelectorAll(".deadline-item"));
-        const newOrder=items.map(el=>parseInt(el.id.replace("dl-item-",""))).filter(id=>!isNaN(id));
-        deadlines.sort((a,b)=>newOrder.indexOf(a.id)-newOrder.indexOf(b.id));
-        saveDeadlines();
-      }
-      dlDragSrc=null; dlDragOver=null;
+      if(dlDragSrc!==null){ const el=document.getElementById("dl-item-"+dlDragSrc); if(el){ el.classList.remove("dl-dragging"); el.blur(); } }
+      clearDlDropHighlight();
+      dlDragSrc=null;
     }
-    // ── 렌더링 ────────────────────────────────
+    // ── 렌더링 (트리 재귀) ─────────────────────
+    function buildDlNode(d, container){
+      const now=Date.now();
+      const ms=d.target-now;
+      const allDone = d.todos.length > 0 && d.todos.every(t=>t.done);
+      const displayText = allDone ? "완료" : formatDisplay(d,ms);
+      const cls = allDone ? "done-all" : (ms<3600000?"urgent":ms<86400000?"soon":"");
+
+      let item=document.getElementById("dl-item-"+d.id);
+      if(!item){
+        item=document.createElement("div");
+        item.className="deadline-item";
+        item.id="dl-item-"+d.id;
+        item.setAttribute("draggable","true");
+        item.addEventListener("dragstart",(e)=>onDlDragStart(e,d.id));
+        item.addEventListener("dragover",(e)=>onDlDragOver(e,d.id));
+        item.addEventListener("dragleave",onDlDragLeave);
+        item.addEventListener("drop",(e)=>onDlDrop(e,d.id));
+        item.addEventListener("dragend",onDlDragEnd);
+      }
+      if(item.parentElement!==container) container.appendChild(item);
+      item.classList.toggle("dl-item-sub", !!d.parentId);
+
+      // 상단 행
+      let top=item.querySelector(".dl-item-top");
+      if(!top){ top=document.createElement("div"); top.className="dl-item-top"; item.prepend(top); }
+      const collapseIcon=d.collapsed
+        ?`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 -960 960 960\" fill=\"currentColor\"><path d=\"M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z\"/></svg>`
+        :`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 -960 960 960\" fill=\"currentColor\"><path d=\"M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z\"/></svg>`;
+      const promoteBtn = d.parentId ? `<button class="dl-promote-btn" onclick="promoteDeadline(${d.id})" title="상위로 이동"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M480-528 296-344l-56-56 240-240 240 240-56 56-184-184Z"/></svg></button>` : "";
+      top.innerHTML=`
+        <button class="dl-collapse-btn" onclick="toggleCollapse(${d.id})">${collapseIcon}</button>
+        <span class="dl-item-name" title="${d.name}" onclick="toggleCollapse(${d.id})" style="cursor:pointer">${d.name}</span>
+        ${promoteBtn}
+        <span class="dl-item-remaining ${cls}" onclick="toggleDisplayMode(${d.id})">${displayText}</span>
+        <button class="dl-del-btn" onclick="deleteDeadline(${d.id})"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="m336-280-56-56 144-144-144-143 56-56 144 144 143-144 56 56-144 143 144 144-56 56-143-144-144 144Z"/></svg></button>`;
+
+      // 할일 영역
+      let body=item.querySelector(".todo-body");
+      if(!body){ body=document.createElement("div"); body.className="todo-body"; item.appendChild(body); }
+      body.classList.toggle("collapsed",!!d.collapsed);
+
+      // 할일 목록
+      let todoList=body.querySelector(".todo-list");
+      if(!todoList){ todoList=document.createElement("div"); todoList.className="todo-list"; body.appendChild(todoList); }
+      todoList.innerHTML=d.todos.map(t=>{
+        const badge = t.days > 0 ? `<span class="todo-deadline-badge">${getTodoBadge(d,t.accDays)}</span>` : "";
+        return `<div class="todo-item">
+          <input type="checkbox" class="todo-check" ${t.done?"checked":""} onchange="toggleTodo(${d.id},${t.id})" />
+          <span class="todo-text ${t.done?"done":""}">${t.text}</span>
+          ${badge}
+          <button class="todo-del" onclick="deleteTodo(${d.id},${t.id})"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="m336-280-56-56 144-144-144-143 56-56 144 144 143-144 56 56-144 143 144 144-56 56-143-144-144 144Z"/></svg></button>
+        </div>`;
+      }).join("");
+
+      // 추가 행 (포커스 유지) — 서브메뉴가 된 항목은 할일 추가 UI를 숨김
+      let addRow=body.querySelector(".todo-add-row");
+      if(!addRow){
+        addRow=document.createElement("div");
+        addRow.className="todo-add-row";
+        addRow.innerHTML=`
+          <input class="todo-add-input" id="todo-input-${d.id}" placeholder="할일 추가..." />
+          <input class="todo-days-input" id="todo-days-${d.id}" type="number" min="0" placeholder="0" />
+          <span class="todo-days-label">일</span>
+          <button class="todo-add-btn" onclick="addTodo(${d.id})">+</button>`;
+        addRow.querySelector(".todo-add-input").addEventListener("keydown",(e)=>{ if(e.key==="Enter") addTodo(d.id); });
+        body.appendChild(addRow);
+      }
+      addRow.style.display = d.parentId ? "none" : "flex";
+
+      // 하위 데드라인(서브메뉴) 컨테이너
+      let childrenBox=item.querySelector(".dl-children");
+      if(!childrenBox){ childrenBox=document.createElement("div"); childrenBox.className="dl-children"; item.appendChild(childrenBox); }
+      childrenBox.classList.toggle("collapsed",!!d.collapsed);
+      const kids=getChildren(d.id);
+      childrenBox.style.display = kids.length ? "" : "none";
+      kids.forEach(k=>buildDlNode(k, childrenBox));
+      kids.forEach((k,i)=>{ const el=document.getElementById("dl-item-"+k.id); if(el && childrenBox.children[i]!==el) childrenBox.appendChild(el); });
+    }
+
     function renderDeadlines(){
       const list=document.getElementById("deadlineList"); if(!list) return;
-      const now=Date.now();
+      // 드롭 시 DOM을 재배치하면 네이티브 dragend가 안 뜨는 경우가 있어, 렌더링마다 잔여 드래그 클래스를 강제로 제거
+      document.querySelectorAll(".dl-dragging,.dl-drop-before,.dl-drop-after,.dl-drop-nest").forEach(el=>{
+        el.classList.remove("dl-dragging","dl-drop-before","dl-drop-after","dl-drop-nest");
+      });
       if(deadlines.length===0){ list.style.display="none"; list.innerHTML=""; return; }
       list.style.display="flex"; list.style.flexDirection="column"; list.style.gap="6px";
 
-      deadlines.forEach((d,di)=>{
-        const ms=d.target-now;
-        // 할일 전부 완료 시 "완료" 표기
-        const allDone = d.todos.length > 0 && d.todos.every(t=>t.done);
-        const displayText = allDone ? "완료" : formatDisplay(d,ms);
-        const cls = allDone ? "done-all" : (ms<3600000?"urgent":ms<86400000?"soon":"");
+      const topLevel=getChildren(null);
+      topLevel.forEach(d=>buildDlNode(d,list));
 
-        let item=document.getElementById("dl-item-"+d.id);
-        if(!item){
-          item=document.createElement("div");
-          item.className="deadline-item";
-          item.id="dl-item-"+d.id;
-          item.setAttribute("draggable","true");
-          item.addEventListener("dragstart",(e)=>onDlDragStart(e,d.id));
-          item.addEventListener("dragover",(e)=>onDlDragOver(e,d.id));
-          item.addEventListener("dragend",onDlDragEnd);
-          list.appendChild(item);
-        }
-
-        // 상단 행
-        let top=item.querySelector(".dl-item-top");
-        if(!top){ top=document.createElement("div"); top.className="dl-item-top"; item.prepend(top); }
-        const collapseIcon=d.collapsed
-          ?`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 -960 960 960\" fill=\"currentColor\"><path d=\"M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z\"/></svg>`
-          :`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 -960 960 960\" fill=\"currentColor\"><path d=\"M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z\"/></svg>`;
-        top.innerHTML=`
-          <button class="dl-collapse-btn" onclick="toggleCollapse(${d.id})">${collapseIcon}</button>
-          <span class="dl-item-name" title="${d.name}" onclick="toggleCollapse(${d.id})" style="cursor:pointer">${d.name}</span>
-          <span class="dl-item-remaining ${cls}" onclick="toggleDisplayMode(${d.id})">${displayText}</span>
-          <button class="dl-del-btn" onclick="deleteDeadline(${d.id})">×</button>`;
-
-        // 할일 영역
-        let body=item.querySelector(".todo-body");
-        if(!body){ body=document.createElement("div"); body.className="todo-body"; item.appendChild(body); }
-        body.classList.toggle("collapsed",!!d.collapsed);
-
-        // 할일 목록
-        let todoList=body.querySelector(".todo-list");
-        if(!todoList){ todoList=document.createElement("div"); todoList.className="todo-list"; body.appendChild(todoList); }
-        todoList.innerHTML=d.todos.map(t=>{
-const badge =
-  t.days > 0
-    ? `<span class="todo-deadline-badge">${getTodoBadge(d,t.accDays)}</span>`
-    : "";
-          return `<div class="todo-item">
-            <input type="checkbox" class="todo-check" ${t.done?"checked":""} onchange="toggleTodo(${d.id},${t.id})" />
-            <span class="todo-text ${t.done?"done":""}">${t.text}</span>
-            ${badge}
-            <button class="todo-del" onclick="deleteTodo(${d.id},${t.id})">×</button>
-          </div>`;
-        }).join("");
-
-        // 추가 행 (포커스 유지)
-        let addRow=body.querySelector(".todo-add-row");
-        if(!addRow){
-          addRow=document.createElement("div");
-          addRow.className="todo-add-row";
-          addRow.innerHTML=`
-            <input class="todo-add-input" id="todo-input-${d.id}" placeholder="할일 추가..." />
-            <input class="todo-days-input" id="todo-days-${d.id}" type="number" min="0" placeholder="0" />
-            <span class="todo-days-label">일</span>
-            <button class="todo-add-btn" onclick="addTodo(${d.id})">+</button>`;
-          addRow.querySelector(".todo-add-input").addEventListener("keydown",(e)=>{ if(e.key==="Enter") addTodo(d.id); });
-          body.appendChild(addRow);
-        }
-      });
-
-      // 삭제된 아이템 제거
-      list.querySelectorAll(".deadline-item").forEach(el=>{
+      // 삭제된 아이템 제거 (전체 트리 대상)
+      document.querySelectorAll(".deadline-item").forEach(el=>{
         const id=parseInt(el.id.replace("dl-item-",""));
         if(!deadlines.find(d=>d.id===id)) el.remove();
       });
 
-      // 순서 정렬
-      deadlines.forEach((d,i)=>{
+      // 최상위 순서 정렬
+      topLevel.forEach((d,i)=>{
         const el=document.getElementById("dl-item-"+d.id);
         if(el&&list.children[i]!==el) list.appendChild(el);
       });

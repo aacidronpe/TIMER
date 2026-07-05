@@ -154,7 +154,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 380, height: pos.height || 180,
     x: pos.x, y: pos.y,
-    frame: false, resizable: false,
+    frame: false, resizable: false, thickFrame: false,
     transparent: true, backgroundColor: "#00000000",
     skipTaskbar: false, alwaysOnTop: false, show: false,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
@@ -194,7 +194,7 @@ function showStatsWindow() {
     width: Math.round(baseW * scale), height: Math.round(baseH * scale),
     x: pos.x, y: pos.y,
     minWidth: 380, minHeight: 400,
-    frame: false, resizable: true,
+    frame: false, resizable: true, thickFrame: false,
     transparent: true, backgroundColor: "#00000000",
     skipTaskbar: true, show: false,
     icon: fs.existsSync(statsIconPath) ? statsIconPath : undefined,
