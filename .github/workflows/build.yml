@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # ← 이 줄 추가 (Release 생성 권한)
+  contents: write   # Release 생성 및 수정을 위해 필수
 
 jobs:
   build:
@@ -40,10 +40,13 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      # 💡 이 부분을 변경했습니다!
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')  # 태그가 푸시되었을 때만 실행 (일반 main 푸시 땐 패스)
+        uses: softprops/action-gh-release@v2
         with:
-          name: TIMER-${{ matrix.os }}
-          path: |
+          files: |
             dist/*.exe
             dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
