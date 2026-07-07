@@ -49,6 +49,7 @@
       "package.json",
       "icon.ico",
       "icon.icns",
+      "trayTemplate.png",
       "node_modules/**"
     ]
   }

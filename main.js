@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog, Tray, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -23,6 +23,7 @@ const winStatePath = path.join(getDataDir(), "timer-winstate.json");
 
 let mainWindow = null;
 let statsWindow = null;
+let tray = null;
 let trackingInterval = null;
 let timerInterval = null;
 let activeWinLib = null;
@@ -151,20 +152,37 @@ function createMainWindow() {
   const state = loadWinState();
   const pos = state.main || {};
   const iconPath = require("path").join(__dirname, "icon.ico");
+  const isMac = process.platform === "darwin";
   mainWindow = new BrowserWindow({
     width: 380, height: pos.height || 180,
     x: pos.x, y: pos.y,
     frame: false, resizable: false, thickFrame: false,
     transparent: true, backgroundColor: "#00000000",
-    skipTaskbar: false, alwaysOnTop: false, show: false,
+    skipTaskbar: isMac ? true : false, alwaysOnTop: false, show: false,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, "preload.js") },
   });
   mainWindow.loadFile("index.html");
-  mainWindow.once("ready-to-show", () => mainWindow.show());
-  const saveMainBounds = () => { if (mainWindow && !mainWindow.isDestroyed()) saveWinState("main", mainWindow.getBounds()); };
+  if (!isMac) {
+    // Windows: 기존처럼 실행하면 바로 위젯이 뜸
+    mainWindow.once("ready-to-show", () => mainWindow.show());
+  }
+  const saveMainBounds = () => { if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) saveWinState("main", mainWindow.getBounds()); };
   mainWindow.on("moved", saveMainBounds);
   mainWindow.on("resized", saveMainBounds);
+
+  if (isMac) {
+    // 팝오버처럼: 다른 곳 클릭(포커스 아웃) 시 자동으로 숨김
+    mainWindow.on("blur", () => {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) mainWindow.hide();
+    });
+    // Escape 키로도 닫힘
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+      if (input.type === "keyDown" && input.key === "Escape") {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      }
+    });
+  }
 
   const contextMenu = Menu.buildFromTemplate([
     { label: "통계 보기", click: () => showStatsWindow() },
@@ -177,11 +195,12 @@ function createMainWindow() {
       appUsageStats.clear(); completedSessions = []; saveData(); sendStatsUpdate();
     }},
     { type: "separator" },
-    { label: "종료", click: () => app.quit() },
+    { label: "종료", click: () => { app.isQuiting = true; app.quit(); } },
   ]);
   ipcMain.on("show-context-menu", () => contextMenu.popup({ window: mainWindow }));
   mainWindow.on("closed", () => { mainWindow = null; });
 }
+
 
 function showStatsWindow() {
   if (statsWindow && !statsWindow.isDestroyed()) { statsWindow.focus(); return; }
@@ -233,6 +252,7 @@ ipcMain.handle("timer-start", async () => {
   timerInterval = setInterval(() => {
     timerSeconds++;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("timer-tick", timerSeconds);
+    updateTrayTitle(timerSeconds);
   }, 1000);
   return timerSeconds;
 });
@@ -240,12 +260,14 @@ ipcMain.handle("timer-stop", () => {
   timerRunning = false;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   stopTracking();
+  updateTrayTitle(0);
   return timerSeconds;
 });
 ipcMain.handle("timer-complete", () => {
   timerRunning = false;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   stopTracking();
+  updateTrayTitle(0);
   if (timerSeconds > 0) {
     completedSessions.push({ duration: timerSeconds, startTime: sessionStartTime || Date.now(), endTime: Date.now(), apps: Array.from(appUsageStats.entries()).map(([name, val]) => ({ name, seconds: typeof val === "object" ? val.seconds : val, path: typeof val === "object" ? val.path : null })) });
     if (completedSessions.length > 100) completedSessions = completedSessions.slice(-100);
@@ -258,7 +280,9 @@ ipcMain.handle("timer-complete", () => {
 ipcMain.handle("timer-reset", () => {
   timerRunning = false;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-  stopTracking(); appUsageStats.clear(); sessionStartTime = null; timerSeconds = 0; return 0;
+  stopTracking(); appUsageStats.clear(); sessionStartTime = null; timerSeconds = 0;
+  updateTrayTitle(0);
+  return 0;
 });
 ipcMain.handle("get-stats", () => getStatsData());
 ipcMain.handle("clear-data", () => { appUsageStats.clear(); completedSessions = []; saveData(); sendStatsUpdate(); });
@@ -371,5 +395,84 @@ ipcMain.handle("set-auto-track", (_, val) => {
   if (val) startMouseTracking();
   else stopMouseTracking();
 });
-app.whenReady().then(() => { loadData(); createMainWindow(); });
+function positionWindowUnderTray(win, trayRef) {
+  if (!trayRef) return;
+  const trayBounds = trayRef.getBounds();
+  const winBounds = win.getBounds();
+  const x = Math.round(trayBounds.x + trayBounds.width / 2 - winBounds.width / 2);
+  const y = Math.round(trayBounds.y + trayBounds.height + 4);
+  win.setPosition(x, y, false);
+}
+
+function toggleMainWindow() {
+  const isMac = process.platform === "darwin";
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    if (isMac) {
+      mainWindow.once("ready-to-show", () => {
+        positionWindowUnderTray(mainWindow, tray);
+        mainWindow.show();
+        mainWindow.focus();
+      });
+    }
+    return;
+  }
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    if (isMac) positionWindowUnderTray(mainWindow, tray);
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+function formatTraySeconds(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const mm = String(m).padStart(2, "0"), ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+function updateTrayTitle(sec) {
+  if (tray && process.platform === "darwin") {
+    tray.setTitle(sec > 0 ? formatTraySeconds(sec) : "");
+  }
+}
+
+function createTray() {
+  // macOS 메뉴바는 작은 템플릿 아이콘을 권장 (trayTemplate.png, 22x22 흑백/투명 PNG)
+  // Windows는 기존 icon.ico를 그대로 사용
+  const trayIconPath = process.platform === "darwin"
+    ? path.join(__dirname, "trayTemplate.png")
+    : path.join(__dirname, "icon.ico");
+
+  if (!fs.existsSync(trayIconPath)) {
+    console.warn("트레이 아이콘 파일이 없어 메뉴바/트레이 아이콘을 건너뜁니다:", trayIconPath);
+    return;
+  }
+
+  let image = nativeImage.createFromPath(trayIconPath);
+  if (image.isEmpty()) return;
+  if (process.platform === "darwin") {
+    image = image.resize({ width: 22, height: 22 });
+    image.setTemplateImage(true); // 라이트/다크 메뉴바에 맞춰 자동으로 색이 반전됨
+  }
+
+  tray = new Tray(image);
+  tray.setToolTip("TIMER");
+  tray.on("click", () => toggleMainWindow());
+
+  const trayMenu = Menu.buildFromTemplate([
+    { label: "타이머 보이기/숨기기", click: () => toggleMainWindow() },
+    { label: "통계 보기", click: () => showStatsWindow() },
+    { type: "separator" },
+    { label: "종료", click: () => { app.isQuiting = true; app.quit(); } },
+  ]);
+  tray.setContextMenu(trayMenu);
+}
+
+app.whenReady().then(() => {
+  loadData();
+  if (process.platform === "darwin" && app.dock) app.dock.hide(); // Dock 아이콘 제거
+  createMainWindow();
+  createTray();
+});
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
