@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog, Tray, nativeImage, systemPreferences, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -119,8 +119,33 @@ function sendStatsUpdate() {
   if (statsWindow && !statsWindow.isDestroyed()) statsWindow.webContents.send("stats-update", getStatsData());
 }
 
+let screenPermissionDialogShown = false;
+function notifyScreenPermissionNeeded() {
+  if (screenPermissionDialogShown) return;
+  screenPermissionDialogShown = true;
+  dialog.showMessageBox({
+    type: "info",
+    title: "권한 필요",
+    message: "앱별 사용 시간을 기록하려면 '화면 기록' 권한이 필요해요.",
+    detail: "시스템 설정 > 개인정보 보호 및 보안 > 화면 기록에서 TIMER를 켜주신 뒤, 앱을 완전히 종료했다가 다시 실행해주세요. (타이머 자체는 권한 없이도 정상 작동합니다.)",
+    buttons: ["시스템 설정 열기", "닫기"],
+    defaultId: 0,
+  }).then((res) => {
+    if (res.response === 0) {
+      shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+    }
+  });
+}
+
 async function startTracking() {
   if (trackingInterval) return;
+  if (process.platform === "darwin" && systemPreferences.getMediaAccessStatus) {
+    const status = systemPreferences.getMediaAccessStatus("screen");
+    if (status !== "granted") {
+      notifyScreenPermissionNeeded();
+      return; // 권한 없으면 앱별 트래킹만 건너뛰고, 타이머 자체는 계속 진행
+    }
+  }
   if (!activeWinLib) {
     try { activeWinLib = (await import("active-win")).default; } catch (e) { return; }
   }
